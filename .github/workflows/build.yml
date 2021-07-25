@@ -49,7 +49,7 @@ jobs:
         name: Cinematics
         path: target/Cinematics*.jar
     - name: Copy artifact to dev server
-      uses: appleboy/scp-action@v0.0.1
+      uses: appleboy/scp-action@master
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
