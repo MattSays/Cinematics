@@ -107,8 +107,10 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
         @Override
         public boolean save(JsonObject jsonActor) {
 
-            this.optimizeAnimationPoints();
-            this.calculateVectors();
+            if(this.isDynamic()) {
+                this.optimizeAnimationPoints();
+                this.calculateVectors();
+            }
 
             jsonActor.addProperty("mobType", mobType.name());
             jsonActor.addProperty("canBeSpectated", canBeSpectated);

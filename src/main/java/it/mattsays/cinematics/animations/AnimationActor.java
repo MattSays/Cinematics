@@ -52,6 +52,10 @@ public abstract class AnimationActor {
         }
 
         protected void calculateVectors() {
+
+            this.velocityVectors = new Vector[animationPoints.length - 1];
+            this.rotationVelocityVectors = new Vector[animationPoints.length - 1];
+
             for (int i = 0; i < animationPoints.length - 1; i++) {
                 var startVec = this.animationPoints[i].toVector();
                 var startRotationVec = AnimationActor.getRotationVector(this.animationPoints[i]);
@@ -128,8 +132,6 @@ public abstract class AnimationActor {
 
             if(this.dynamic) {
                 this.speed = jsonActor.get("speed").getAsFloat();
-                this.velocityVectors = new Vector[animationPoints.length - 1];
-                this.rotationVelocityVectors = new Vector[animationPoints.length - 1];
 
                 this.calculateVectors();
             }
