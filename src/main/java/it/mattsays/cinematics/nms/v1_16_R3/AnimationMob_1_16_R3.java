@@ -2,31 +2,41 @@ package it.mattsays.cinematics.nms.v1_16_R3;
 
 import it.mattsays.cinematics.Cinematics;
 import it.mattsays.cinematics.animations.AnimationMob;
+import it.mattsays.cinematics.utils.DataContainer;
 import net.minecraft.server.v1_16_R3.*;
 import org.bukkit.Location;
-import org.bukkit.craftbukkit.v1_16_R3.CraftWorld;
 import org.bukkit.craftbukkit.v1_16_R3.entity.CraftPlayer;
-import org.bukkit.entity.*;
-import org.bukkit.util.Vector;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
 
 import java.util.Optional;
 import java.util.UUID;
 
 public class AnimationMob_1_16_R3 extends AnimationMob {
 
-    private EntityCreature actorMob;
+    private MoveableMob_1_16_R3 actorMob;
+
 
     public AnimationMob_1_16_R3(UUID id, Player player) {
         super(id, player);
     }
 
-    private Optional<? extends EntityCreature> getNMSCreature(EntityType mobType, World world) {
+    @Override
+    public Location getCurrentLocation() {
+        return this.actorMob.getBukkitEntity().getLocation();
+    }
+
+    @Override
+    public boolean isArrivedAtDestination() {
+        return this.actorMob.getPathfinderGoal().isAtDestination();
+    }
+
+    private Optional<MoveableMob_1_16_R3> getNMSCreature(EntityType mobType, Location spawnLocation, float speed) {
         var mobName = mobType.getEntityClass().getSimpleName();
 
         try {
-            var mobClass = (Class<? extends EntityCreature>) Class.forName("net.minecraft.server.v1_16_R3.Entity" + mobName);
-            var entityType = EntityTypes.class.getField(mobName.toUpperCase()).get(null);
-            var mob = mobClass.getConstructor(EntityTypes.class, World.class).newInstance(entityType, world);
+            var entityType = (EntityTypes<? extends EntityInsentient>) EntityTypes.class.getField(mobName.toUpperCase()).get(null);
+            var mob = new MoveableMob_1_16_R3(entityType, spawnLocation, speed);
             return Optional.of(mob);
         } catch (Exception e) {
             Cinematics.LOGGER.error("Bukkit to NMS entity conversion error > " + e.getMessage());
@@ -36,19 +46,20 @@ public class AnimationMob_1_16_R3 extends AnimationMob {
 
     }
 
+
     @Override
     public void spawn(Location location) {
 
+        var mobContainer = new DataContainer<MoveableMob_1_16_R3>();
 
-        this.getNMSCreature(this.mobType, ((CraftWorld)location.getWorld()).getHandle()).ifPresent(mob -> {
-            this.actorMob = mob;
+        this.getNMSCreature(this.mobType, location, 1.25f).ifPresent(mob -> {
+            mobContainer.data = mob;
         });
 
-        this.actorMob.setLocation(location.getX(), location.getY(), location.getZ(),
-                location.getYaw(), location.getPitch());
+        this.actorMob = mobContainer.data;
 
-        this.teleportTo(location);
-        this.needsUpdate = false;
+        this.actorMob.getPathfinderGoal().setSpeed(this.speed);
+        this.actorMob.getPathfinderGoal().setDestinationPoint(this.currentDestinationPoint);
 
         this.actorMob.setInvulnerable(true);
 
@@ -56,61 +67,56 @@ public class AnimationMob_1_16_R3 extends AnimationMob {
         var metadataPacket = new PacketPlayOutEntityMetadata(this.actorMob.getId(), this.actorMob.getDataWatcher(), false);
         var headRotationPacket = new PacketPlayOutEntityHeadRotation(this.actorMob, (byte) ((location.getYaw() / 360.0d) * 255.0d));
 
-        var entityPlayer = ((CraftPlayer)this.destinationPlayer).getHandle();
+        var entityPlayer = ((CraftPlayer) this.destinationPlayer).getHandle();
 
         entityPlayer.playerConnection.sendPacket(spawnPacket);
         entityPlayer.playerConnection.sendPacket(metadataPacket);
         entityPlayer.playerConnection.sendPacket(headRotationPacket);
+    }
 
+    @Override
+    public void teleportTo(Location location) {
+        this.actorMob.setLocation(
+                location.getX(), location.getY(), location.getZ(),
+                0, location.getPitch()
+        );
     }
 
     @Override
     public void update() {
-        this.currentVelocity.add(this.currentAcceleration.clone().multiply(0.2));
 
+        var teleportPacket = new PacketPlayOutEntityTeleport(this.actorMob);
+        var headRotationPacket = new PacketPlayOutEntityHeadRotation(this.actorMob, (byte) ((this.actorMob.getHeadRotation() / 360.0d) * 255.0d));
 
-        // Update position and rotation modified by velocity (0.2 = 1 Tick in second)
-        this.move(this.getCurrentVelocity().clone().multiply(0.02) );
-        this.rotate(this.getCurrentRotationVelocity().clone().multiply(0.02));
+        var entityPlayer = ((CraftPlayer) this.destinationPlayer).getHandle();
+        entityPlayer.playerConnection.sendPacket(headRotationPacket);
+        entityPlayer.playerConnection.sendPacket(teleportPacket);
 
-        if(this.needsUpdate) {
-            var position = this.getCurrentPosition();
-            var rotation = this.getCurrentRotation();
-            // Update rotation and position
-            this.actorMob.setLocation(
-                    position.getX(), position.getY(), position.getZ(),
-                    0, (float)rotation.getY()
-            );
+        this.actorMob.tick();
+    }
 
-            this.needsUpdate = false;
+    @Override
+    public void setDestinationPoint(Location location) {
+        this.actorMob.getPathfinderGoal().setDestinationPoint(location);
+    }
 
-            // Send update to the player
+    @Override
+    public void setSpeed(float speed) {
+        super.setSpeed(speed);
+        this.actorMob.getPathfinderGoal().setSpeed(speed);
+    }
 
-            var teleportPacket = new PacketPlayOutEntityTeleport(this.actorMob);
-            var headRotationPacket = new PacketPlayOutEntityHeadRotation(this.actorMob, (byte) ((rotation.getX() / 360.0d) * 255.0d));
-
-
-            var entityPlayer = ((CraftPlayer)this.destinationPlayer).getHandle();
-
-            entityPlayer.playerConnection.sendPacket(headRotationPacket);
-            entityPlayer.playerConnection.sendPacket(teleportPacket);
-
-
-
-
-        }
+    @Override
+    public void setSpectator(boolean enable) {
+        var cameraPacket = new PacketPlayOutCamera(enable ? this.actorMob : ((CraftPlayer) this.destinationPlayer).getHandle());
+        ((CraftPlayer) this.destinationPlayer).getHandle().playerConnection.sendPacket(cameraPacket);
     }
 
     @Override
     public void destroy() {
         var killPacket = new PacketPlayOutEntityDestroy(this.actorMob.getId());
-        ((CraftPlayer)this.destinationPlayer).getHandle().playerConnection.sendPacket(killPacket);
+        ((CraftPlayer) this.destinationPlayer).getHandle().playerConnection.sendPacket(killPacket);
     }
 
 
-    @Override
-    public void setSpectator(boolean enable) {
-        var cameraPacket = new PacketPlayOutCamera(enable ? this.actorMob : ((CraftPlayer)this.destinationPlayer).getHandle());
-        ((CraftPlayer)this.destinationPlayer).getHandle().playerConnection.sendPacket(cameraPacket);
-    }
 }

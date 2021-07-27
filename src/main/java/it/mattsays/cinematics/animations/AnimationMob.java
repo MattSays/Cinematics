@@ -5,10 +5,8 @@ import it.mattsays.cinematics.Cinematics;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 
-import java.util.ArrayList;
 import java.util.UUID;
 
 public abstract class AnimationMob extends AnimationActor implements Spectated {
@@ -23,81 +21,23 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
             this.canBeSpectated = false;
         }
 
+        public MobActorData(EntityType mobType, Location[] animationPoints, float speed) {
+            super(AnimationMob.class, animationPoints, speed);
+
+            this.mobType = mobType;
+        }
+
         @Override
         public Class<? extends BaseActorData> getType() {
             return MobActorData.class;
         }
 
-        public MobActorData(EntityType mobType, Location[] animationPoints, float speed, boolean canBeSpectated) {
-            super(AnimationMob.class, animationPoints, speed);
-
-            this.mobType = mobType;
-            this.canBeSpectated = canBeSpectated;
-        }
-
-        private void optimizeAnimationPoints() {
-
-            var animationPoints = new ArrayList<Location>();
-
-            for (int i = 0; i < this.animationPoints.length - 1; i++) {
-                var firstLoc = this.animationPoints[i];
-                var secondLoc = this.animationPoints[i + 1];
-
-                var yDiff = secondLoc.getBlockY() - firstLoc.getBlockY();
-
-                animationPoints.add(firstLoc);
-
-                if(yDiff != 0) {
-                    if(Math.abs(yDiff) == 1) {
-
-                        var startLoc = firstLoc.clone();
-                        var directionVec = secondLoc.clone().subtract(firstLoc)
-                                .toVector().setY(0).normalize();
-
-                        var foundBlock = false;
-                        Location jumpLocation = null;
-
-                        while (!foundBlock) {
-
-                            var stepLocation = startLoc.add(directionVec);
-
-                            if(stepLocation.getBlock().isSolid()) {
-                                foundBlock = true;
-                                jumpLocation = stepLocation.add(0, yDiff, 0);
-                            }
-
-                            var distanceVecToDestination = secondLoc.clone().subtract(stepLocation).toVector();
-
-                            if(distanceVecToDestination.getX() == 0
-                                && distanceVecToDestination.getZ() == 0
-                                && distanceVecToDestination.getY() == yDiff) {
-                                break;
-                            }
-
-                        }
-
-                        if(foundBlock) {
-                            animationPoints.add(jumpLocation.clone().add(-directionVec.getX(), -yDiff, -directionVec.getZ()).toBlockLocation());
-                            animationPoints.add(jumpLocation.toBlockLocation());
-                        }
-
-                    } else {
-                        Cinematics.LOGGER.error("Y difference between location to high!");
-                        Cinematics.LOGGER.error("\tFirst location > " + firstLoc);
-                        Cinematics.LOGGER.error("\tSecond location > " + secondLoc);
-                    }
-                }
-
-                if(i == this.animationPoints.length - 2) {
-                    animationPoints.add(secondLoc);
-                }
-            }
-
-            this.animationPoints = animationPoints.toArray(new Location[] {});
-        }
-
         public EntityType getMobType() {
             return mobType;
+        }
+
+        public void setCanBeSpectated(boolean canBeSpectated) {
+            this.canBeSpectated = canBeSpectated;
         }
 
         public boolean canBeSpectated() {
@@ -106,11 +46,6 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
 
         @Override
         public boolean save(JsonObject jsonActor) {
-
-            if(this.isDynamic()) {
-                this.optimizeAnimationPoints();
-                this.calculateVectors();
-            }
 
             jsonActor.addProperty("mobType", mobType.name());
             jsonActor.addProperty("canBeSpectated", canBeSpectated);
@@ -135,6 +70,8 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
         }
     }
 
+    protected Location currentDestinationPoint;
+
     protected boolean canBeSpectated;
 
     protected EntityType mobType;
@@ -149,13 +86,43 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
 
         MobActorData mobActorData = (MobActorData) actorData;
 
-        this.canBeSpectated = mobActorData.canBeSpectated;
+        if (actorData.isDynamic()) {
+            this.currentDestinationPoint = actorData.getAnimationPoints()[1];
+            this.speed = mobActorData.getSpeed();
+        }
 
+        this.canBeSpectated = mobActorData.canBeSpectated;
         this.mobType = mobActorData.mobType;
+    }
+
+    @Override
+    public void logicUpdate(BaseActorData actorData) {
+
+        if (this.isArrivedAtDestination()) {
+
+            if (this.currentAnimationPointIndex + 1 >= actorData.animationPoints.length) {
+                if (!actorData.isLooping()) {
+                    this.stopped = true;
+                    return;
+                } else {
+                    this.currentAnimationPointIndex = 0;
+                    this.teleportTo(actorData.getSpawnLocation());
+                    return;
+                }
+            }
+
+            this.currentAnimationPointIndex++;
+            this.setDestinationPoint(actorData.animationPoints[this.currentAnimationPointIndex]);
+        }
+
     }
 
     @Override
     public boolean canBeSpectated() {
         return this.canBeSpectated;
     }
+
+    public abstract boolean isArrivedAtDestination();
+
+    public abstract void setDestinationPoint(Location location);
 }

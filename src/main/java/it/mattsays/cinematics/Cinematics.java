@@ -32,7 +32,7 @@ public final class Cinematics extends JavaPlugin implements CinematicsApi {
     private void registerCommand(String command, PaperCommand cmd, String permission) {
         var pluginCommand = this.getCommand(command);
 
-        if(pluginCommand == null) {
+        if (pluginCommand == null) {
             LOGGER.error("Error registering command '" + command + "'");
             return;
         }
@@ -46,13 +46,6 @@ public final class Cinematics extends JavaPlugin implements CinematicsApi {
     public void onLoad() {
         INSTANCE = this;
         LOGGER = this.getSLF4JLogger();
-
-        LOGGER.info("Loading plugin...");
-
-        this.animationsManager = new AnimationsManager();
-        this.animationsManager.loadAnimations();
-
-        LOGGER.info("Plugin loaded");
     }
 
     @Override
@@ -60,6 +53,8 @@ public final class Cinematics extends JavaPlugin implements CinematicsApi {
 
         LOGGER.info("Enabling plugin...");
 
+        this.animationsManager = new AnimationsManager();
+        this.animationsManager.loadAnimations();
         this.animationsManager.registerAnimationsEvents();
 
 
@@ -69,9 +64,9 @@ public final class Cinematics extends JavaPlugin implements CinematicsApi {
 
     }
 
+
     @Override
     public void onDisable() {
-
         this.animationsManager.unloadAnimations();
     }
 }

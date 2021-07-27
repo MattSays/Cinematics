@@ -1,6 +1,9 @@
 package it.mattsays.cinematics.animations;
 
-import com.google.gson.*;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonIOException;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import it.mattsays.cinematics.Cinematics;
 import it.mattsays.cinematics.api.animations.Animations;
 import it.mattsays.cinematics.utils.DataContainer;
@@ -24,31 +27,21 @@ import java.util.stream.Stream;
 
 public class AnimationsManager implements Animations {
 
-    private static final class BaseAnimationData {
-        public String name;
-        public Animation.AnimationType type;
-        public float globalSpeed;
-    }
-
-    private static final class VisualizationData {
-        public BukkitTask task;
-        public AnimationActor[] actors;
-
-        public VisualizationData(BukkitTask task, AnimationActor[] actors) {
-            this.task = task;
-            this.actors = actors;
-        }
-    }
-
-    private final Map<String, Animation> animations;
-    private final Map<UUID, VisualizationData> animationVisualization;
 
     public static Path BASE_ANIMATIONS_PATH = Path.of("animations");
+    private final Map<String, Animation> animations;
+    private final Map<UUID, VisualizationData> animationVisualization;
+    private final Map<UUID, String> playerAnimations;
 
     public AnimationsManager() {
         this.animations = new HashMap<>();
         this.animationVisualization = new HashMap<>();
+        this.playerAnimations = new HashMap<>();
         BASE_ANIMATIONS_PATH.toFile().mkdirs();
+    }
+
+    public Map<UUID, String> getPlayerAnimations() {
+        return playerAnimations;
     }
 
     public Optional<Animation> getAnimation(String name) {
@@ -60,6 +53,7 @@ public class AnimationsManager implements Animations {
     }
 
     public void unloadAnimations() {
+        this.stopVisualizations();
         this.animations.values().forEach(Animation::stopAll);
         this.animations.clear();
     }
@@ -88,9 +82,10 @@ public class AnimationsManager implements Animations {
                                     "' in " + filePath.getParent().toString())
                     );
 
-                } catch (IOException e) {
+                } catch (Exception e) {
                     Cinematics.LOGGER.error("Couldn't load animation '" + filePath.getFileName() +
-                            "' in " + filePath.getParent().toString() + ": " + e.getMessage());
+                            "' in " + filePath.getParent().toString() + ": ");
+                    e.printStackTrace();
                 }
             });
         } catch (IOException e) {
@@ -99,12 +94,13 @@ public class AnimationsManager implements Animations {
         }
     }
 
-    public Optional<Animation> loadAnimation(String jsonData, Path path) {
+    public Optional<Animation> loadAnimation(String jsonData, Path path) throws JsonIOException {
         var jsonObject = new JsonParser().parse(jsonData).getAsJsonObject();
 
         var type = Animation.AnimationType.valueOf(jsonObject.get("type").getAsString());
 
-        Animation finalAnimation;
+        Animation finalAnimation = null;
+
 
         switch (type) {
             case CAMERA:
@@ -112,9 +108,6 @@ public class AnimationsManager implements Animations {
                 break;
             case SCENE:
                 finalAnimation = new SceneAnimation(jsonObject, path);
-                break;
-            default:
-                finalAnimation = null;
                 break;
         }
 
@@ -126,11 +119,11 @@ public class AnimationsManager implements Animations {
         var statusContainer = new DataContainer<>(false);
 
         this.getAnimation(name).ifPresent(animation -> {
-            if(!(animation instanceof SceneAnimation sceneAnimation)) {
+            if (!(animation instanceof SceneAnimation sceneAnimation)) {
                 return;
             }
 
-            var actorsData = sceneAnimation.getAnimationActorsData();
+            var actorsData = new HashMap<>(sceneAnimation.getAnimationActorsData());
 
             this.stopCurrentVisualization(player);
 
@@ -139,7 +132,9 @@ public class AnimationsManager implements Animations {
 
             var index = 0;
 
-            for (var actorData: actorsData.values()) {
+            for (var actorData : actorsData.values()) {
+
+                actorData.setLooping(true);
 
                 int finalIndex = index;
                 sceneAnimation.actorSpawn(player, actorData).ifPresent(actor -> {
@@ -150,25 +145,32 @@ public class AnimationsManager implements Animations {
                 index++;
             }
 
+            var greenDust = new Particle.DustOptions(Color.GREEN, 1);
+            var redDust = new Particle.DustOptions(Color.RED, 1);
 
             var task = Bukkit.getScheduler().runTaskTimer(Cinematics.getInstance(), () -> {
                 animationPoints.forEach((uuid, locations) -> {
-                    var dustOption = new Particle.DustOptions(Color.fromRGB(Math.abs(uuid.hashCode()) % 0x1000000), 1);
-                    for (var animationPoint : locations) {
-                        player.spawnParticle(Particle.REDSTONE, animationPoint, 20, dustOption);
+                    var actorDust = new Particle.DustOptions(Color.fromRGB(Math.abs(uuid.hashCode()) % 0x1000000), 1);
+                    for (int i = 0; i < locations.length; i++) {
+                        Particle.DustOptions dustOption;
+
+                        if (i == 0) {
+                            dustOption = greenDust;
+                        } else if (i == locations.length - 1) {
+                            dustOption = redDust;
+                        } else {
+                            dustOption = actorDust;
+                        }
+
+                        player.spawnParticle(Particle.REDSTONE, locations[i], 20, dustOption);
                     }
                 });
+                for (var actor : actors) {
+                    sceneAnimation.actorUpdate(actor, actorsData.get(actor.id));
+                }
             }, 10L, 0L);
 
             this.animationVisualization.put(player.getUniqueId(), new VisualizationData(task, actors));
-
-            Bukkit.getScheduler().runTaskLaterAsynchronously(Cinematics.getInstance(), () -> {
-                        task.cancel();
-                        for (var actor : actors) {
-                            actor.destroy();
-                        }
-                        this.animationVisualization.remove(player.getUniqueId());
-            },50 * 20L);
 
             statusContainer.data = true;
         });
@@ -179,13 +181,25 @@ public class AnimationsManager implements Animations {
     public void stopCurrentVisualization(Player player) {
         var visualizationData = this.animationVisualization.get(player.getUniqueId());
 
-        if(visualizationData != null) {
+        if (visualizationData != null) {
             visualizationData.task.cancel();
             for (var actor : visualizationData.actors) {
                 actor.destroy();
             }
             this.animationVisualization.remove(player.getUniqueId());
         }
+    }
+
+    private void stopVisualizations() {
+
+        for (var visualizationData : this.animationVisualization.values()) {
+            visualizationData.task.cancel();
+            for (var actor : visualizationData.actors) {
+                actor.destroy();
+            }
+        }
+
+        this.animationVisualization.clear();
     }
 
     public boolean saveAnimation(Animation animation, @Nullable String authorName, @Nullable String saveDir) {
@@ -199,7 +213,7 @@ public class AnimationsManager implements Animations {
         // Specific settings
         var result = animation.save(jsonObject);
 
-        if(!result) {
+        if (!result) {
             Cinematics.LOGGER.error("Unable to save animation '" + animation.getName() + "'");
             return false;
         }
@@ -210,13 +224,13 @@ public class AnimationsManager implements Animations {
 
         var dirFile = new File(BASE_ANIMATIONS_PATH.toString() + "/" + subPath);
 
-        if(!dirFile.exists()) {
+        if (!dirFile.exists()) {
             dirFile.mkdir();
         }
 
         var jsonFilePath = Path.of(BASE_ANIMATIONS_PATH.toString(), subPath, animation.getName() + ".json");
 
-        try(Writer writer = new FileWriter(jsonFilePath.toString())) {
+        try (Writer writer = new FileWriter(jsonFilePath.toString())) {
             writer.write(gson.toJson(jsonObject));
         } catch (IOException e) {
             Cinematics.LOGGER.error("Couldn't save animation '" + animation.getName() +
@@ -231,7 +245,7 @@ public class AnimationsManager implements Animations {
 
     public boolean deleteAnimation(String animationName) {
 
-        if(!this.animations.containsKey(animationName)) {
+        if (!this.animations.containsKey(animationName)) {
             Cinematics.LOGGER.error("Couldn't delete animation '" + animationName + "': " + "not found");
             return false;
         }
@@ -251,12 +265,35 @@ public class AnimationsManager implements Animations {
     @Override
     public void playAnimation(String name, Player player) {
         this.stopCurrentVisualization(player);
-        this.getAnimation(name).ifPresent(animation -> animation.play(player));
+        this.getAnimation(name).ifPresent(animation -> {
+            animation.play(player);
+        });
     }
 
     @Override
     public void stopAnimation(String name, Player player) {
         this.getAnimation(name).ifPresent(animation -> animation.stop(player));
+    }
+
+    public boolean isRunningAnimation(Player player) {
+        return this.playerAnimations.containsKey(player.getUniqueId());
+    }
+
+    public void stopAnimation(Player player) {
+        if (this.isRunningAnimation(player)) {
+            var name = this.playerAnimations.get(player.getUniqueId());
+            this.stopAnimation(name, player);
+        }
+    }
+
+    private static final class VisualizationData {
+        public BukkitTask task;
+        public AnimationActor[] actors;
+
+        public VisualizationData(BukkitTask task, AnimationActor[] actors) {
+            this.task = task;
+            this.actors = actors;
+        }
     }
 
 }

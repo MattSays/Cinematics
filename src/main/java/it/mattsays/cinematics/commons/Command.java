@@ -40,7 +40,7 @@ public abstract class Command {
     }
 
     protected void handleCommands(Object commandSender, String[] arguments) {
-        if(arguments.length < 1) {
+        if (arguments.length < 1) {
             this.execute(commandSender, arguments);
             return;
         }
@@ -48,17 +48,17 @@ public abstract class Command {
         var subCommandArgs = Arrays.copyOfRange(arguments, 1, arguments.length);
         var subCommand = subCommands.getOrDefault(arguments[0], this);
 
-        if(subCommand != this)
+        if (subCommand != this)
             subCommand.handleCommands(commandSender, subCommandArgs);
         else
             this.execute(commandSender, arguments);
     }
 
     protected boolean handlePermissions(Object commandSender, String[] arguments) {
-        if(!this.hasPermissions(commandSender, arguments))
+        if (!this.hasPermissions(commandSender, arguments))
             return false;
 
-        if(arguments.length > 1)  {
+        if (arguments.length > 1) {
             var subCommandArgs = Arrays.copyOfRange(arguments, 1, arguments.length);
             var subCommand = subCommands.getOrDefault(arguments[0], this);
 
@@ -69,7 +69,7 @@ public abstract class Command {
     }
 
     protected List<String> handleSuggestions(Object commandSender, String[] arguments) {
-        if(arguments.length <= 1) {
+        if (arguments.length <= 1) {
             var suggestions = this.getSuggestions(commandSender, arguments).orElse(new ArrayList<>());
             suggestions.addAll(this.subCommands.keySet());
             return suggestions;
@@ -78,7 +78,7 @@ public abstract class Command {
         var subCommandArgs = Arrays.copyOfRange(arguments, 1, arguments.length);
         var subCommand = subCommands.getOrDefault(arguments[0], this);
 
-        if(subCommand != this)
+        if (subCommand != this)
             return subCommand.handleSuggestions(commandSender, subCommandArgs);
         else
             return this.getSuggestions(commandSender, arguments).orElse(new ArrayList<>());

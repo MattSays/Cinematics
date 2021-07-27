@@ -4,6 +4,6 @@ import org.bukkit.entity.Player;
 
 public interface SpectateSettings {
 
-    public void fakeGamemode(Player player);
+    void fakeGamemode(Player player);
 
 }

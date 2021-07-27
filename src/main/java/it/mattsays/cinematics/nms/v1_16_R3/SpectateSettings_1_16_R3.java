@@ -10,7 +10,7 @@ public class SpectateSettings_1_16_R3 implements SpectateSettings {
 
     @Override
     public void fakeGamemode(Player player) {
-        var entityPlayer = ((CraftPlayer)player).getHandle();
+        var entityPlayer = ((CraftPlayer) player).getHandle();
 
         var gameModeChangePacket = new PacketPlayOutGameStateChange(PacketPlayOutGameStateChange.d, 3);
         entityPlayer.playerConnection.sendPacket(gameModeChangePacket);

@@ -3,35 +3,66 @@ package it.mattsays.cinematics.animations;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import it.mattsays.cinematics.Cinematics;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
-import org.jetbrains.annotations.NotNull;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.Optional;
 import java.util.UUID;
 
 public abstract class AnimationActor {
 
+    protected final Player destinationPlayer;
+    protected boolean stopped;
+    protected UUID id;
+    protected float speed;
+    protected int currentAnimationPointIndex;
+
+    public AnimationActor(UUID id, Player player) {
+        this.id = id;
+        this.destinationPlayer = player;
+        this.currentAnimationPointIndex = 0;
+    }
+
+    public static Vector getRotationVector(Location location) {
+        return new Vector(location.getYaw(), location.getPitch(), 0);
+    }
+
+    public abstract Location getCurrentLocation();
+
+    public UUID getID() {
+        return id;
+    }
+
+    public float getSpeed() {
+        return speed;
+    }
+
+    public void setSpeed(float speed) {
+        this.speed = speed;
+    }
+
+    public abstract void teleportTo(Location location);
+
+    public abstract void init(BaseActorData actorData);
+
+    public abstract void spawn(Location location);
+
+    public abstract void logicUpdate(BaseActorData actorData);
+
+    public abstract void update();
+
+    public abstract void destroy();
+
     public static class BaseActorData {
-        private final UUID id;
-        private Class<? extends AnimationActor> actor;
-        private boolean dynamic;
         protected Location[] animationPoints;
-
+        private UUID id;
+        private Class<? extends AnimationActor> actor;
+        private boolean dynamic, main, loop;
         private float speed;
-        private Vector[] velocityVectors, rotationVelocityVectors;
-
 
         public BaseActorData() {
-            this.id = UUID.randomUUID();
-        }
-
-        public Class<? extends BaseActorData> getType() {
-            return BaseActorData.class;
         }
 
         public BaseActorData(Class<? extends AnimationActor> actor, Location[] animationPoints, float speed) {
@@ -39,52 +70,65 @@ public abstract class AnimationActor {
             this.id = UUID.randomUUID();
             this.actor = actor;
             this.animationPoints = animationPoints;
-
             this.dynamic = this.animationPoints.length > 1;
+            this.speed = speed;
+        }
 
-            if(this.dynamic) {
-                this.speed = speed;
-                this.velocityVectors = new Vector[animationPoints.length - 1];
-                this.rotationVelocityVectors = new Vector[animationPoints.length - 1];
+        public BaseActorData(Class<? extends AnimationActor> actor, Location spawnPoint) {
+            this.id = UUID.randomUUID();
+            this.actor = actor;
+            this.animationPoints = new Location[]{spawnPoint};
+            this.dynamic = false;
+        }
 
-                this.calculateVectors();
+        public static Optional<? extends BaseActorData> createActorData(JsonObject jsonActor) {
+
+            var type = jsonActor.get("type").getAsString();
+
+            try {
+                var clazz = (Class<? extends BaseActorData>) Class.forName(type);
+                return Optional.of((BaseActorData) clazz.getDeclaredConstructor().newInstance());
+            } catch (Exception e) {
+                Cinematics.LOGGER.error("Json animation loading > Invalid class type '" + type + "' for actor data");
+                e.printStackTrace();
+                return Optional.empty();
             }
         }
 
-        protected void calculateVectors() {
+        public Class<? extends BaseActorData> getType() {
+            return BaseActorData.class;
+        }
 
-            this.velocityVectors = new Vector[animationPoints.length - 1];
-            this.rotationVelocityVectors = new Vector[animationPoints.length - 1];
+        public boolean isMain() {
+            return main;
+        }
 
-            for (int i = 0; i < animationPoints.length - 1; i++) {
-                var startVec = this.animationPoints[i].toVector();
-                var startRotationVec = AnimationActor.getRotationVector(this.animationPoints[i]);
+        public void setMain(boolean main) {
+            this.main = main;
+        }
 
-                var endVec = this.animationPoints[i+1].toVector();
-                var endRotationVec = AnimationActor.getRotationVector(this.animationPoints[i+1]);
+        public boolean isLooping() {
+            return loop;
+        }
 
-                var velocityVector = endVec
-                        .subtract(startVec)
-                        .normalize();
-
-                var rotationVelocityVector = endRotationVec
-                        .subtract(startRotationVec)
-                        .normalize();
-
-                this.velocityVectors[i] = velocityVector;
-                this.rotationVelocityVectors[i] = rotationVelocityVector;
-            }
+        public void setLooping(boolean loop) {
+            this.loop = loop;
         }
 
         public boolean save(JsonObject jsonActor) {
+
+            jsonActor.addProperty("id", this.id.toString());
 
             jsonActor.addProperty("type", this.getType().getName());
 
             jsonActor.addProperty("class", this.actor.getName());
 
-            var jsonLocations = new JsonArray();
+            if (this.dynamic) {
+                jsonActor.addProperty("loop", this.loop);
+                jsonActor.addProperty("speed", this.speed);
+            }
 
-            jsonActor.addProperty("speed", this.speed);
+            var jsonLocations = new JsonArray();
 
             for (var animationPoint : this.animationPoints) {
                 var jsonLocation = new JsonObject();
@@ -104,6 +148,8 @@ public abstract class AnimationActor {
         }
 
         public boolean load(JsonObject jsonActor, World world) {
+
+            this.id = UUID.fromString(jsonActor.get("id").getAsString());
 
             var type = jsonActor.get("class").getAsString();
 
@@ -130,27 +176,12 @@ public abstract class AnimationActor {
 
             this.dynamic = this.animationPoints.length > 1;
 
-            if(this.dynamic) {
+            if (this.dynamic) {
                 this.speed = jsonActor.get("speed").getAsFloat();
-
-                this.calculateVectors();
+                this.loop = jsonActor.get("loop").getAsBoolean();
             }
 
             return true;
-        }
-
-        public static Optional<? extends BaseActorData> createActorData(JsonObject jsonActor) {
-
-            var type = jsonActor.get("type").getAsString();
-
-            try {
-                var clazz = (Class<? extends BaseActorData>) Class.forName(type);
-                return Optional.of((BaseActorData) clazz.getConstructors()[0].newInstance());
-            } catch (Exception e) {
-                Cinematics.LOGGER.error("Json animation loading > Invalid class type '" + type + "' for actor data");
-                e.printStackTrace();
-                return Optional.empty();
-            }
         }
 
         public UUID getID() {
@@ -177,127 +208,6 @@ public abstract class AnimationActor {
             return speed;
         }
 
-        public Vector[] getVelocityVectors() {
-            return velocityVectors;
-        }
-
-        public Vector[] getRotationVelocityVectors() {
-            return rotationVelocityVectors;
-        }
-    }
-
-    public static Vector VECTOR_ZERO = new Vector();
-
-    protected boolean needsUpdate;
-    protected UUID id;
-    protected final Player destinationPlayer;
-    protected Vector currentPosition, lastPosition;
-    protected Vector currentRotation;
-    protected Vector currentVelocity, currentRotationVelocity;
-    protected Vector currentAcceleration;
-    protected Location currentDestinationPoint;
-
-    protected int currentAnimationPointIndex;
-
-    public AnimationActor(UUID id, Player player) {
-        this.id = id;
-        this.currentPosition = new Vector();
-        this.currentRotation = new Vector();
-        this.currentVelocity = new Vector();
-        this.currentAcceleration = new Vector();
-        this.currentRotationVelocity = new Vector();
-        this.destinationPlayer = player;
-        this.needsUpdate = false;
-        this.currentAnimationPointIndex = 0;
-    }
-
-
-    public Vector getCurrentPosition() {
-        return currentPosition;
-    }
-
-    public void setCurrentPosition(Vector newPosition) {
-        if(newPosition.equals(currentPosition))
-            return;
-
-        this.currentPosition = newPosition;
-        this.needsUpdate = true;
-    }
-
-    public void init(BaseActorData actorData) {
-
-    }
-
-    public void move(Vector movement) {
-        if(movement.equals(VECTOR_ZERO))
-            return;
-
-        this.lastPosition = this.currentPosition;
-        this.currentPosition.add(movement);
-
-        this.needsUpdate = true;
-    }
-
-    public Vector getCurrentRotation() {
-        return currentRotation;
-    }
-
-    public void setCurrentRotation(Vector newRotation) {
-        if(newRotation.equals(currentRotation))
-            return;
-
-        this.currentRotation = newRotation;
-        this.needsUpdate = true;
-    }
-
-    public void setCurrentAcceleration(Vector currentAcceleration) {
-        this.currentAcceleration = currentAcceleration;
-    }
-
-    public void rotate(Vector rotation) {
-        if(rotation.equals(VECTOR_ZERO))
-            return;
-
-        this.currentRotation.add(rotation);
-        this.needsUpdate = true;
-    }
-
-    public Vector getCurrentVelocity() {
-        return currentVelocity;
-    }
-
-    public void setCurrentVelocity(Vector currentVelocity) {
-        this.currentVelocity = currentVelocity;
-    }
-
-    public Vector getCurrentRotationVelocity() {
-        return currentRotationVelocity;
-    }
-
-    public void setCurrentRotationVelocity(Vector currentRotationVelocity) {
-        this.currentRotationVelocity = currentRotationVelocity;
-    }
-
-    public void teleportTo(Location location) {
-        if(location.toVector().equals(this.currentPosition) &&
-                this.currentRotation.equals(getRotationVector(location)))
-            return;
-
-        this.currentPosition = location.toVector();
-        this.currentRotation = getRotationVector(location);
-        this.needsUpdate = true;
-    }
-
-    public UUID getID() {
-        return id;
-    }
-
-    public abstract void spawn(Location location);
-    public abstract void update();
-    public abstract void destroy();
-
-    public static Vector getRotationVector(Location location) {
-        return new Vector(location.getYaw(), location.getPitch(), 0);
     }
 
 }
