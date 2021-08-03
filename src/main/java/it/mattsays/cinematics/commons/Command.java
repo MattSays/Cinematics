@@ -72,6 +72,7 @@ public abstract class Command {
         if (arguments.length <= 1) {
             var suggestions = this.getSuggestions(commandSender, arguments).orElse(new ArrayList<>());
             suggestions.addAll(this.subCommands.keySet());
+            Collections.sort(suggestions);
             return suggestions;
         }
 

@@ -91,8 +91,12 @@ public class AnimationMob_1_16_R3 extends AnimationMob {
         var entityPlayer = ((CraftPlayer) this.destinationPlayer).getHandle();
         entityPlayer.playerConnection.sendPacket(headRotationPacket);
         entityPlayer.playerConnection.sendPacket(teleportPacket);
+    }
 
-        this.actorMob.tick();
+    @Override
+    public void tick() {
+        if(this.actorMob != null)
+            this.actorMob.tick();
     }
 
     @Override

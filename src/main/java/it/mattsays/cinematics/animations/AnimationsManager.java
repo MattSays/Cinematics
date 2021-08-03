@@ -94,6 +94,11 @@ public class AnimationsManager implements Animations {
         }
     }
 
+    public void reloadAnimations() {
+        this.unloadAnimations();
+        this.loadAnimations();
+    }
+
     public Optional<Animation> loadAnimation(String jsonData, Path path) throws JsonIOException {
         var jsonObject = new JsonParser().parse(jsonData).getAsJsonObject();
 
@@ -263,26 +268,36 @@ public class AnimationsManager implements Animations {
     }
 
     @Override
-    public void playAnimation(String name, Player player) {
+    public boolean playAnimation(String name, Player player) {
         this.stopCurrentVisualization(player);
+        var status = new DataContainer<>(false);
         this.getAnimation(name).ifPresent(animation -> {
             animation.play(player);
+            status.data = true;
         });
+        return status.data;
     }
 
     @Override
-    public void stopAnimation(String name, Player player) {
-        this.getAnimation(name).ifPresent(animation -> animation.stop(player));
+    public boolean stopAnimation(String name, Player player) {
+        var status = new DataContainer<>(false);
+        this.getAnimation(name).ifPresent(animation ->  {
+            animation.stop(player);
+            status.data = true;
+        });
+        return status.data;
     }
 
     public boolean isRunningAnimation(Player player) {
         return this.playerAnimations.containsKey(player.getUniqueId());
     }
 
-    public void stopAnimation(Player player) {
+    public boolean stopAnimation(Player player) {
         if (this.isRunningAnimation(player)) {
             var name = this.playerAnimations.get(player.getUniqueId());
-            this.stopAnimation(name, player);
+            return this.stopAnimation(name, player);
+        } else {
+            return false;
         }
     }
 

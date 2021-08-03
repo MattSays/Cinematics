@@ -56,7 +56,7 @@ public class PathfinderGoalGoToLocation_1_16_R3 extends PathfinderGoal implement
             return false;
         }
 
-        if (this.entity.getPositionVector().distanceSquared(this.destinationVector) <= 0.1) {
+        if (this.entity.getPositionVector().distanceSquared(this.destinationVector) <= 0.5) {
             this.atDestination = true;
             return false;
         }

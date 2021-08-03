@@ -203,4 +203,9 @@ public abstract class AnimationCamera extends AnimationActor implements Spectate
             this.currentAnimationPointIndex++;
         }
     }
+
+    @Override
+    public void remove() {
+
+    }
 }

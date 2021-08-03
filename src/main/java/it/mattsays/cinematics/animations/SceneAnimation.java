@@ -115,7 +115,7 @@ public class SceneAnimation extends Animation {
                 ((Spectated) actor).setSpectator(false);
             }
 
-            actor.destroy();
+            this.actorRemove(actor);
         }
     }
 

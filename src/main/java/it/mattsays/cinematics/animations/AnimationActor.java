@@ -55,6 +55,8 @@ public abstract class AnimationActor {
 
     public abstract void destroy();
 
+    public abstract void remove();
+
     public static class BaseActorData {
         protected Location[] animationPoints;
         private UUID id;

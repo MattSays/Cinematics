@@ -2,14 +2,40 @@ package it.mattsays.cinematics.animations;
 
 import com.google.gson.JsonObject;
 import it.mattsays.cinematics.Cinematics;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
 
-import java.util.UUID;
+import java.util.*;
 
 public abstract class AnimationMob extends AnimationActor implements Spectated {
+
+    public static Map<UUID, AnimationMob> animationMobs;
+    public static BukkitTask updateTask;
+
+    public static void initUpdateTask() {
+        animationMobs = new HashMap<>();
+        updateTask = Bukkit.getScheduler().runTaskTimer(Cinematics.getInstance(), () -> {
+            animationMobs.values().forEach(AnimationMob::tick);
+        }, 0L, 1L);
+    }
+
+    public static void addMob(AnimationMob animationMob) {
+        animationMobs.put(animationMob.id, animationMob);
+    }
+
+    public static void removeMob(AnimationMob animationMob) {
+        animationMobs.remove(animationMob.id);
+    }
+
+    public static void stopUpdateTask() {
+        updateTask.cancel();
+        updateTask = null;
+        animationMobs.clear();
+    }
 
     public static class MobActorData extends BaseActorData {
 
@@ -93,6 +119,9 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
 
         this.canBeSpectated = mobActorData.canBeSpectated;
         this.mobType = mobActorData.mobType;
+
+        AnimationMob.addMob(this);
+
     }
 
     @Override
@@ -116,6 +145,13 @@ public abstract class AnimationMob extends AnimationActor implements Spectated {
         }
 
     }
+
+    @Override
+    public void remove() {
+        AnimationMob.removeMob(this);
+    }
+
+    public abstract void tick();
 
     @Override
     public boolean canBeSpectated() {

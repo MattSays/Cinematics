@@ -151,6 +151,11 @@ public abstract class Animation implements Listener {
         actor.update();
     }
 
+    public void actorRemove(AnimationActor actor) {
+        actor.destroy();
+        actor.remove();
+    }
+
     public void play(Player player) {
 
         if (this.isAnimationRunning(player.getUniqueId()))

@@ -4,6 +4,6 @@ main: it.mattsays.cinematics.Cinematics
 api-version: 1.16
 authors: [ MattSaysMC ]
 commands:
-  animcreator:
-    description: Creates animations
-    usage: /animcreator <add:finish:play:stop>
+  animations:
+    description: Manages animations
+    usage: /animations <play:stop:visualize:list:reload>

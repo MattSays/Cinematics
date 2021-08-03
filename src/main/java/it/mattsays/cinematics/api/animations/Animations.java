@@ -4,8 +4,9 @@ import org.bukkit.entity.Player;
 
 public interface Animations {
 
-    void playAnimation(String name, Player player);
+    boolean playAnimation(String name, Player player);
 
-    void stopAnimation(String name, Player player);
+    boolean stopAnimation(String name, Player player);
 
+    boolean stopAnimation(Player player);
 }
